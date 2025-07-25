@@ -164,6 +164,21 @@ def get_content_info(url):
             'quiet': True,
             'extract_flat': False,  # Get detailed info for preview
             'no_warnings': True,
+            # Add headers to avoid bot detection
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-us,en;q=0.5',
+                'Accept-Encoding': 'gzip,deflate',
+                'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.7',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+            },
+            # Add cookies and additional options to avoid detection
+            'cookiesfrombrowser': None,
+            'sleep_interval': 1,  # Add delay between requests
+            'max_sleep_interval': 5,
+            'sleep_interval_subtitles': 1,
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -198,8 +213,13 @@ def get_content_info(url):
                     'tags': info.get('tags', [])[:5]  # First 5 tags
                 }
     except Exception as e:
-        st.error(f"Error fetching content info: {str(e)}")
-        return None
+        error_msg = str(e)
+        if "Sign in to confirm" in error_msg or "bot" in error_msg.lower():
+            st.warning("⚠️ YouTube is currently blocking requests from this server. This is a temporary issue that may resolve itself. Please try again later or use a different video URL.")
+            return None
+        else:
+            st.error(f"Error fetching content info: {error_msg}")
+            return None
 
 def format_duration(seconds):
     """Convert seconds to readable duration format."""
@@ -282,13 +302,34 @@ def download_content(url, start_index, end_index, output_dir, format_type, inclu
     except Exception as e:
         return False, f"Cannot create output directory: {str(e)}"
 
-    # Build yt-dlp options
+    # Build yt-dlp options with anti-bot detection measures
     ydl_opts = {
         'ignoreerrors': True,
         'no_warnings': False,
         'retries': 3,
         'fragment_retries': 3,
         'skip_unavailable_fragments': True,
+        # Anti-bot detection headers and settings
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-us,en;q=0.5',
+            'Accept-Encoding': 'gzip,deflate',
+            'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.7',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        },
+        'cookiesfrombrowser': None,
+        'sleep_interval': 2,  # Add delay between requests
+        'max_sleep_interval': 10,
+        'sleep_interval_subtitles': 2,
+        # Use different extractors as fallback
+        'extractor_args': {
+            'youtube': {
+                'skip': ['dash', 'hls'],
+                'player_skip': ['configs'],
+            }
+        }
     }
 
     # Set playlist items only for playlists
@@ -396,7 +437,9 @@ def download_content(url, start_index, end_index, output_dir, format_type, inclu
     
     except Exception as e:
         error_msg = str(e)
-        if "Private video" in error_msg:
+        if "Sign in to confirm" in error_msg or "bot" in error_msg.lower():
+            return False, "YouTube is currently blocking requests from this server due to bot detection. This is a common issue with cloud hosting. Please try again later or consider using the app locally."
+        elif "Private video" in error_msg:
             return False, "Content is private or unavailable"
         elif "Video unavailable" in error_msg:
             return False, "Content is no longer available"
@@ -415,6 +458,12 @@ def main():
         <p>Download videos or audio from YouTube videos and playlists with ease</p>
     </div>
     """, unsafe_allow_html=True)
+
+    # Important notice for cloud hosting
+    st.info("""
+    📋 **Important Notice**: This app is hosted on Streamlit Cloud. YouTube may occasionally block requests from cloud servers 
+    due to bot detection. If you encounter issues, please try again later or consider running the app locally for best performance.
+    """)
 
     # Sidebar for settings
     with st.sidebar:
@@ -514,6 +563,23 @@ def main():
                         if content_info:
                             st.session_state.cached_info = content_info
                             st.session_state.cached_url = content_url
+                        else:
+                            # If content info fails, show a simplified interface
+                            st.warning("⚠️ Unable to fetch content preview. You can still try to download the content.")
+                            st.session_state.cached_info = {
+                                'type': url_type,
+                                'title': 'Content Preview Unavailable',
+                                'uploader': 'Unknown',
+                                'count': 1 if url_type == 'video' else 10,  # Default values
+                                'description': '',
+                                'duration': 0,
+                                'view_count': 0,
+                                'thumbnail': '',
+                                'like_count': 0,
+                                'tags': []
+                            }
+                            st.session_state.cached_url = content_url
+                            content_info = st.session_state.cached_info
                 else:
                     content_info = st.session_state.cached_info
                     
@@ -673,11 +739,24 @@ def main():
             else:
                 st.error(f"💥 {message}")
                 st.info("💡 **Troubleshooting Tips:**\n"
-                       "- Ensure the content is public and available\n"
-                       "- Check your internet connection\n"
-                       "- Verify write permissions to the output directory\n"
-                       "- Try a different quality setting\n"
-                       "- Some content might be geo-blocked or age-restricted")
+                       "- **Bot Detection**: YouTube may block cloud servers - try again later\n"
+                       "- **Run Locally**: Download the app from GitHub for best reliability\n"
+                       "- **Check Content**: Ensure the content is public and available\n"
+                       "- **Internet Connection**: Verify your connection is stable\n"
+                       "- **Output Directory**: Check write permissions to the directory\n"
+                       "- **Quality Settings**: Try a different quality setting\n"
+                       "- **Geo-blocking**: Some content might be region-restricted")
+
+                # Add GitHub link for local installation
+                st.markdown("""
+                🔗 **For best performance, run locally:**
+                ```bash
+                git clone https://github.com/dhecaptain/youtube-downloader-app.git
+                cd youtube-downloader-app
+                pip install -r requirements.txt
+                streamlit run app.py
+                ```
+                """)
 
     # Quick actions for common use cases
     if content_info:
