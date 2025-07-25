@@ -1,5 +1,13 @@
 import streamlit as st
-import yt_dlp
+
+# Try importing yt-dlp with error handling for debugging
+try:
+    import yt_dlp
+except ImportError as e:
+    st.error(f"❌ Failed to import yt-dlp: {e}")
+    st.error("Please make sure yt-dlp is installed. Contact support if this issue persists.")
+    st.stop()
+
 import os
 import re
 import threading
